@@ -60,13 +60,14 @@ uint32_t pal_watchdog_enable(void);
 **/
 uint32_t pal_watchdog_disable(void);
 
-
-#if (defined(SP1_COMPILE) || defined(SP2_COMPILE) || defined(VM2_COMPILE) ||\
+#if ((PLATFORM_SPMC_EL == 2) && (defined(SP1_COMPILE)))
+#define pal_uart_putc(x) pal_uart_putc_hypcall((char)x)
+#elif (defined(SP2_COMPILE) || defined(VM2_COMPILE) ||\
      defined(SP3_COMPILE) || defined(SP4_COMPILE) || defined(VM3_COMPILE))
 /* Use hyp log system call for sp2, sp3, sp4, vm2 and vm3 */
 #define pal_uart_putc(x) pal_uart_putc_hypcall((char)x)
 #else
-/* Use platform uart for vm1 & sp1 */
+/* Use platform uart for vm1 & spmc_el3 sp1 */
 #define pal_uart_putc(x) pal_print_driver(x)
 #endif
 

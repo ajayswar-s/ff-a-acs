@@ -12,6 +12,26 @@ static uint32_t notification_info_get(uint32_t fid)
 {
     ffa_args_t payload;
 
+
+    /* Clear the pending notifications */
+    val_memset(&payload, 0, sizeof(ffa_args_t));
+    payload.arg1 = val_get_endpoint_id(val_get_curr_endpoint_logical_id());
+#if (PLATFORM_NS_HYPERVISOR_PRESENT == 1)
+    payload.arg2 = FFA_NOTIFICATIONS_FLAG_BITMAP_SP |
+                   FFA_NOTIFICATIONS_FLAG_BITMAP_SPM |
+                   FFA_NOTIFICATIONS_FLAG_BITMAP_VM |
+                   FFA_NOTIFICATIONS_FLAG_BITMAP_HYP;
+#else
+    payload.arg2 = FFA_NOTIFICATIONS_FLAG_BITMAP_SP |
+                   FFA_NOTIFICATIONS_FLAG_BITMAP_SPM;
+#endif
+    val_ffa_notification_get(&payload);
+    if (payload.fid == FFA_ERROR_32)
+    {
+        LOG(ERROR, "Failed notification get err %x\n", payload.arg2);
+        return VAL_ERROR_POINT(1);
+    }
+
     /* No pending notifications check */
     val_memset(&payload, 0, sizeof(ffa_args_t));
     if (fid == FFA_NOTIFICATION_INFO_GET_64)
@@ -25,14 +45,14 @@ static uint32_t notification_info_get(uint32_t fid)
         {
             LOG(ERROR, "Relayer must return no support for secure ep err %x\n",
                                 payload.arg2);
-            return VAL_ERROR_POINT(1);
+            return VAL_ERROR_POINT(2);
         }
     }
     else if (payload.fid != FFA_ERROR_32 || payload.arg2 != FFA_ERROR_NODATA)
     {
         LOG(ERROR, "Relayer must return error for no pending notifications err %x\n",
                             payload.arg2);
-        return VAL_ERROR_POINT(2);
+        return VAL_ERROR_POINT(3);
     }
 
     return VAL_SUCCESS;
