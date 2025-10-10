@@ -65,7 +65,12 @@ uint32_t vm_to_sp_notification_client(uint32_t test_run_data)
     }
 #endif
 
-    val_select_server_fn_direct(test_run_data, 0, 0, 0, 0);
+    payload = val_select_server_fn_direct(test_run_data, 0, 0, 0, 0);
+    if (payload.arg3)
+    {
+        LOG(ERROR, "Server Initialized failed\n");
+        goto bitmap_destroy;
+    }
 
     LOG(DBG, "Server Initialized, issue direct request for NPI setup");
 

@@ -132,6 +132,8 @@ free_interrupt:
 exit:
     val_memset(&payload, 0, sizeof(ffa_args_t));
     payload.arg1 =  ((uint32_t)sender << 16) | receiver;
+    if (status)
+        payload.arg3 = status;
     val_ffa_msg_send_direct_resp_64(&payload);
     if (payload.fid == FFA_ERROR_32)
     {
