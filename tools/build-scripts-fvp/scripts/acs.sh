@@ -43,7 +43,7 @@ REPO_URL="https://github.com/ARM-software/ff-a-acs.git"
 REVISION="main"
 LINUX_REPO_URL="https://gitlab.arm.com/linux-arm/linux-acs.git"
 LINUX_REVISION="master"
-FFA_ACS_TAG="ffa_acs_linux_user"
+FFA_ACS_TAG="ffa_acs_linux_user_v1"
 
 # Check if ACS_DIR_OVERRIDE is set, otherwise use default
 if [ -n "$ACS_DIR_OVERRIDE" ]; then
