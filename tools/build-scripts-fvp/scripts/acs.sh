@@ -43,6 +43,7 @@ REPO_URL="https://github.com/ARM-software/ff-a-acs.git"
 REVISION="main"
 LINUX_REPO_URL="https://gitlab.arm.com/linux-arm/linux-acs.git"
 LINUX_REVISION="master"
+FFA_ACS_TAG="ffa_acs_linux_user"
 
 # Check if ACS_DIR_OVERRIDE is set, otherwise use default
 if [ -n "$ACS_DIR_OVERRIDE" ]; then
@@ -51,6 +52,7 @@ else
     ACS_DIR="$WORKSPACE/acs-build/$FFA_BUILD"
 fi
 
+LINUX_REPO="$ACS_DIR/linux-acs"
 # Update dependent directories accordingly
 BUILD_DIR_LINUX="$ACS_DIR/build-linux"
 BUILD_DIR_BAREMETAL="$ACS_DIR/build-baremetal"
@@ -97,9 +99,13 @@ CMD_ACS_BAREMETAL="-DCROSS_COMPILE=$TOOLCHAIN \
 if [ ! -d "$ACS_DIR" ]; then
     git clone --branch "$REVISION" "$REPO_URL" "$ACS_DIR"
     cd $ACS_DIR;
+    git checkout $FFA_ACS_TAG
     git clone --branch "$LINUX_REVISION" "$LINUX_REPO_URL"
+    cd $LINUX_REPO
+    git checkout $FFA_ACS_TAG
+    cd $ACS_DIR;
     git submodule update --init;
-    cd -;
+    cd $WORKSPACE
 fi
 
 [ -d "$BUILD_DIR_LINUX" ] && rm -rf "$BUILD_DIR_LINUX";
