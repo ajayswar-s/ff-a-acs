@@ -42,8 +42,9 @@ list(APPEND PLATFORM_FFA_V_1_2_LIST 0 1)
 list(APPEND PLATFORM_FFA_V_ALL_LIST 0 1)
 list(APPEND ENABLE_PIE_LIST ON OFF)
 list(APPEND ENABLE_BTI_LIST ON OFF)
-list(APPEND TARGET_LINUX_LIST 0 1)
 list(APPEND ENABLE_TPM_CRB_LIST 0 1)
+list(APPEND ENABLE_EDK2_STMM_LIST 0 1)
+list(APPEND TARGET_LINUX_LIST 0 1)
 list(APPEND CMAKE_BUILD_TYPE_LIST Release Debug)
 list(APPEND ARM_ARCH_MAJOR_LIST 8 9)
 list(APPEND PLATFORM_FFA_V_MULTI_LIST 0 1)
@@ -82,10 +83,12 @@ include(${ROOT_DIR}/tools/cmake/common/CommonVAL.cmake)
 # Check for valid suites
 _get_sub_dir_list(SUITE_LIST_V_1_0  ${ROOT_DIR}/test/v1.0)
 _get_sub_dir_list(SUITE_LIST_V_1_1 ${ROOT_DIR}/test/v1.1)
+_get_sub_dir_list(SUITE_LIST_V_1_2 ${ROOT_DIR}/test/v1.2)
 
 # Append all suites without duplicates across different FFA version
 set(SUITE_LIST ${SUITE_LIST_V_1_0})
 list(APPEND SUITE_LIST ${SUITE_LIST_V_1_1})
+list(APPEND SUITE_LIST ${SUITE_LIST_V_1_2})
 list(REMOVE_DUPLICATES SUITE_LIST)
 
 if(NOT DEFINED SUITE)
@@ -252,6 +255,41 @@ else()
     message(STATUS "[ACS] : ENABLE_BTI is set to ${ENABLE_BTI}")
 endif()
 
+# Check for TPM CRB support
+if(NOT DEFINED ENABLE_TPM_CRB)
+    set(ENABLE_TPM_CRB 0 CACHE INTERNAL "Default ENABLE_TPM_CRB value" FORCE)
+else()
+    if(NOT ${ENABLE_TPM_CRB} IN_LIST ENABLE_TPM_CRB_LIST)
+        message(FATAL_ERROR "[ACS] : Error: Unspported value for -DENABLE_TPM_CRB=, supported values are : ${ENABLE_TPM_CRB_LIST}")
+    endif()
+    if(${ENABLE_TPM_CRB} EQUAL 1)
+        message(STATUS "[ACS] : ENABLE_TPM_CRB is set to ${ENABLE_TPM_CRB}")
+    endif()
+endif()
+
+if((SUITE STREQUAL "tpm_crb") AND (ENABLE_TPM_CRB EQUAL 0))
+    message(FATAL_ERROR "[ACS] : -DSUITE=tpm_crb requires -DENABLE_TPM_CRB=1")
+endif()
+
+if((ENABLE_TPM_CRB EQUAL 1) AND (NOT SUITE STREQUAL "tpm_crb"))
+    message(FATAL_ERROR "[ACS] : -DENABLE_TPM_CRB=1 is only supported with -DSUITE=tpm_crb")
+endif()
+
+# Check for EDK2 StandaloneMM TPM image build. This option is active only for TPM builds.
+if(${ENABLE_TPM_CRB} EQUAL 1)
+    if(NOT DEFINED ENABLE_EDK2_STMM)
+        set(ENABLE_EDK2_STMM 1 CACHE INTERNAL "Default ENABLE_EDK2_STMM value" FORCE)
+        message(STATUS "[ACS] : Defaulting ENABLE_EDK2_STMM to ${ENABLE_EDK2_STMM}")
+    else()
+        if(NOT ${ENABLE_EDK2_STMM} IN_LIST ENABLE_EDK2_STMM_LIST)
+            message(FATAL_ERROR "[ACS] : Error: Unspported value for -DENABLE_EDK2_STMM=, supported values are : ${ENABLE_EDK2_STMM_LIST}")
+        endif()
+        message(STATUS "[ACS] : ENABLE_EDK2_STMM is set to ${ENABLE_EDK2_STMM}")
+    endif()
+else()
+    set(ENABLE_EDK2_STMM 0 CACHE INTERNAL "EDK2 STMM build disabled when TPM SP is disabled" FORCE)
+endif()
+
 # Check for TARGET_LINUX
 if(NOT DEFINED TARGET_LINUX)
     set(TARGET_LINUX ${TARGET_LINUX_DFLT} CACHE INTERNAL "Default TARGET_LINUX value" FORCE)
@@ -261,17 +299,6 @@ else()
         message(FATAL_ERROR "[ACS] : Error: Unspported value for -DTARGET_LINUX=, supported values are : ${TARGET_LINUX_LIST}")
     endif()
     message(STATUS "[ACS] : TARGET_LINUX is set to ${TARGET_LINUX}")
-endif()
-
-# Check for ENABLE_TPM_CRB
-if(NOT DEFINED ENABLE_TPM_CRB)
-    set(ENABLE_TPM_CRB 0 CACHE INTERNAL "Default ENABLE_TPM_CRB value" FORCE)
-        message(STATUS "[ACS] : Defaulting ENABLE_TPM_CRB to ${ENABLE_TPM_CRB}")
-else()
-    if(NOT ${ENABLE_TPM_CRB} IN_LIST ENABLE_TPM_CRB_LIST)
-        message(FATAL_ERROR "[ACS] : Error: Unspported value for -DENABLE_TPM_CRB=, supported values are : ${ENABLE_TPM_CRB_LIST}")
-    endif()
-    message(STATUS "[ACS] : ENABLE_TPM_CRB is set to ${ENABLE_TPM_CRB}")
 endif()
 
 # Check for XEN_SUPPORT
@@ -344,9 +371,10 @@ add_definitions(-DPLATFORM_NS_HYP_MULTI_VM=${PLATFORM_NS_HYP_MULTI_VM})
 add_definitions(-DPLATFORM_FFA_V_1_0=${PLATFORM_FFA_V_1_0})
 add_definitions(-DPLATFORM_FFA_V_1_1=${PLATFORM_FFA_V_1_1})
 add_definitions(-DPLATFORM_FFA_V_1_2=${PLATFORM_FFA_V_1_2})
+add_definitions(-DENABLE_TPM_CRB=${ENABLE_TPM_CRB})
 add_definitions(-DSUITE=${SUITE})
 
-if(${PLATFORM_FFA_V_MULTI} EQUAL 1)
+if((${PLATFORM_FFA_V_MULTI} EQUAL 1) AND (${ENABLE_TPM_CRB} EQUAL 0))
     # Set EP Specific Version Flags
     set(SUPPORTED_FFA_V_LIST FFA_V_1_1 FFA_V_1_2)
 
@@ -386,6 +414,7 @@ else()
 endif()
 ####
 
+
 ### Cmake clean target ###
 list(APPEND CLEAN_LIST
         ${CMAKE_CURRENT_BINARY_DIR}/${OUTPUT_HEADER}
@@ -417,6 +446,7 @@ execute_process(
             ${ROOT_DIR}/tools/python/ffa_endpoints.py
             ${MANIFEST_PATHS} ${PLATFORM_SP_EL} ${FFA_GEN_OUTPUT_DIR} ${${VM1_FFA_V}}
             ${${SP1_FFA_V}} ${${SP2_FFA_V}} ${${SP3_FFA_V}} ${${SP4_FFA_V}}
+            --enable-tpm-crb ${ENABLE_TPM_CRB}
     RESULT_VARIABLE gen_result
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
@@ -425,7 +455,7 @@ if(NOT gen_result EQUAL 0)
     message(FATAL_ERROR "Failed to generate FFA endpoints.")
 endif()
 
-if(${PLATFORM_FFA_V_MULTI} EQUAL 1)
+if((${PLATFORM_FFA_V_MULTI} EQUAL 1) AND (${ENABLE_TPM_CRB} EQUAL 0))
 # ----------------------------------------------------
 # Run generate-multi-sp-manifest.py at configure time
 # ----------------------------------------------------
@@ -447,10 +477,14 @@ message(STATUS "[ACS] : SP manifest generated successfully.")
 endif()
 
 if(NOT(${PLATFORM_SP_EL} STREQUAL -1))
+if(${ENABLE_TPM_CRB} EQUAL 1)
+add_subdirectory(${ROOT_DIR}/tools/cmake/endpoints/tpm_sp)
+else()
 add_subdirectory(${ROOT_DIR}/tools/cmake/endpoints/sp1)
 add_subdirectory(${ROOT_DIR}/tools/cmake/endpoints/sp2)
 add_subdirectory(${ROOT_DIR}/tools/cmake/endpoints/sp3)
 add_subdirectory(${ROOT_DIR}/tools/cmake/endpoints/sp4)
+endif()
 endif()
 add_subdirectory(${ROOT_DIR}/tools/cmake/endpoints/vm1)
 

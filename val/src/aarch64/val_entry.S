@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2025, Arm Limited or its affiliates. All rights reserved.
+ * Copyright (c) 2021-2026, Arm Limited or its affiliates. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  *
@@ -103,10 +103,12 @@ _start:
 image_load_addr:
     adr x0, image_load_addr
     and x0, x0, #~(PAGE_ALIGNMENT - 1)
-    adr x1, bss_end_addr
-    ldr x1, [x1]
-    adr x2, text_start_addr
-    ldr x2, [x2]
+    adrp x1, bss_end_addr
+    add  x1, x1, :lo12:bss_end_addr
+    ldr  x1, [x1]
+    adrp x2, text_start_addr
+    add  x2, x2, :lo12:text_start_addr
+    ldr  x2, [x2]
     sub x1, x1, x2 // Actual image size
     bl  flush_dcache_range
 
@@ -157,6 +159,19 @@ pie_fixup:
    cmp xzr, x1
    b.ne 2b
    stp xzr, xzr, [x0]
+
+#if defined(TPM_SP_COMPILE)
+    /*
+     * Full fTPM brings initialized pointer tables outside the GOT. The generic
+     * ACS startup fixes only the GOT, so process R_AARCH64_RELATIVE records
+     * after BSS clearing and before entering C.
+     */
+    ldr    x0, =pie_fixup
+    and    x0, x0, #~(PAGE_ALIGNMENT - 1)
+    mov    x1, #IMAGE_SIZE
+    add    x1, x1, x0
+    bl     fix_rela_dyn
+#endif
 
     /* And jump to the C entrypoint. */
     b      val_main
@@ -224,10 +239,77 @@ pie_fixup:
     b.lo   2b
 
     /* set Image offset variable */
-    adr   x1, val_image_load_offset
+    adrp  x1, val_image_load_offset
+    add   x1, x1, :lo12:val_image_load_offset
     str   x0, [x1]
 
     ret
+
+#if defined(TPM_SP_COMPILE)
+/* Apply R_AARCH64_RELATIVE dynamic relocations.
+ * x0 - compiled image base, page aligned.
+ * x1 - compiled image limit, page aligned.
+ */
+fix_rela_dyn:
+    mov    x6, x0
+    mov    x8, x1
+
+    orr    x3, x0, x1
+    tst    x3, #(PAGE_ALIGNMENT - 1)
+    b.eq   1f
+    b      .
+1:
+    and    x2, x30, #~(PAGE_ALIGNMENT - 1)
+    sub    x7, x2, x6    /* runtime load offset */
+
+    adds   x9, x6, x7    /* runtime image base */
+    b.cs   .
+    adds   x10, x8, x7   /* runtime image limit */
+    b.cs   .
+
+    adrp   x1, __RELA_DYN_START__
+    add    x1, x1, :lo12:__RELA_DYN_START__
+    adrp   x2, __RELA_DYN_END__
+    add    x2, x2, :lo12:__RELA_DYN_END__
+
+2:
+    cmp    x1, x2
+    b.eq   4f
+    add    x12, x1, #24
+    cmp    x12, x2
+    b.hi   .
+
+    ldr    x3, [x1]       /* r_offset */
+    ldr    x4, [x1, #8]   /* r_info */
+    ldr    x5, [x1, #16]  /* r_addend */
+
+    cmp    x4, #0x403     /* R_AARCH64_RELATIVE */
+    b.ne   3f
+
+    cmp    x3, x6
+    b.lo   .
+    sub    x11, x8, #8
+    cmp    x3, x11
+    b.hi   .
+
+    adds   x3, x3, x7
+    b.cs   .
+    cmp    x3, x9
+    b.lo   .
+    sub    x11, x10, #8
+    cmp    x3, x11
+    b.hi   .
+
+    add    x5, x5, x7
+    str    x5, [x3]
+
+3:
+    mov    x1, x12
+    b      2b
+
+4:
+    ret
+#endif
 
 flush_dcache_range:
     do_dcache_maintenance_by_mva civac

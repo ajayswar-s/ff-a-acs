@@ -1,0 +1,34 @@
+/*
+ * Copyright (c) 2026, Arm Limited or its affiliates. All rights reserved.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+/dts-v1/;
+/ {
+    compatible = "arm,ffa-manifest-1.0";
+    description = "ACS TPM service";
+    ffa-version = <0x00010002>;
+    uuid = <0x17b862a4 0x18064faf 0x86b3089a 0x58353861>;
+    id = <1>;
+    execution-ctx-count = <1>;
+    exception-level = <2>; /* S-EL1 */
+    execution-state = <0>; /* AARCH64 */
+    load-address = <0x7a00000>;
+    entrypoint-offset = <0x00004000>;
+    xlat-granule = <0>;
+    boot-order = <0>;
+    messaging-method = <0x607>;
+    notification-support;
+    ns-interrupts-action = <2>;
+    gp-register-num = <0x0>;
+
+    memory-regions {
+        compatible = "arm,ffa-manifest-memory-regions";
+        tpm_crb_shared {
+                description = "ACS TPM CRB shared page";
+                pages-count = <1>;
+                base-address = <0x00000000 0x88f00000>;
+                attributes = <0xb>;  /* NS-read-write */
+        };
+    };
+};

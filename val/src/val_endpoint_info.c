@@ -206,10 +206,14 @@ uint32_t val_assign_tg0_to_endpoint(void)
     }
     else if (tg0_64k)
     {
+#if (ENABLE_TPM_CRB == 1)
+        val_set_endpoint_tt_tg0(TPM_SP, VAL_TG0_64K);
+#else
         val_set_endpoint_tt_tg0(SP1, VAL_TG0_64K);
         val_set_endpoint_tt_tg0(SP2, VAL_TG0_64K);
         val_set_endpoint_tt_tg0(SP3, VAL_TG0_64K);
         val_set_endpoint_tt_tg0(SP4, VAL_TG0_64K);
+#endif
         val_set_endpoint_tt_tg0(VM1, VAL_TG0_64K);
 #if (PLATFORM_NS_HYP_MULTI_VM == 1)
         val_set_endpoint_tt_tg0(VM2, VAL_TG0_64K);
@@ -218,10 +222,14 @@ uint32_t val_assign_tg0_to_endpoint(void)
     }
     else if (tg0_16k)
     {
+#if (ENABLE_TPM_CRB == 1)
+        val_set_endpoint_tt_tg0(TPM_SP, VAL_TG0_16K);
+#else
         val_set_endpoint_tt_tg0(SP1, VAL_TG0_16K);
         val_set_endpoint_tt_tg0(SP2, VAL_TG0_16K);
         val_set_endpoint_tt_tg0(SP3, VAL_TG0_16K);
         val_set_endpoint_tt_tg0(SP4, VAL_TG0_16K);
+#endif
         val_set_endpoint_tt_tg0(VM1, VAL_TG0_16K);
 #if (PLATFORM_NS_HYP_MULTI_VM == 1)
         val_set_endpoint_tt_tg0(VM2, VAL_TG0_16K);
