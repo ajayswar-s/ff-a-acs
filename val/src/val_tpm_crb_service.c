@@ -8,6 +8,9 @@
 #include "val_ffa_helpers.h"
 #include "val_misc.h"
 #include "val_tpm_crb_ffa.h"
+#include "val_tpm_crb.h"
+
+static uint32_t g_tpm_active_locality = CRB_LOCALITY_MAX + 1;
 
 /**
  * @brief - Checks whether TPM SP advertises notification support.
@@ -26,6 +29,66 @@ static uint32_t val_tpm_notif_supported(void)
     }
 
     return ((ep_info[TPM_SP].ep_properties & FFA_PARTITION_NOTIFICATION) != 0) ? 1 : 0;
+}
+
+/**
+ * @brief - Handles START(LOCALITY_REQUEST) for a CRB locality.
+ * @param locality - TPM locality number.
+ * @return - Returns TPM service status code.
+ */
+static uint32_t val_tpm_crb_start_locality_request(uint32_t locality)
+{
+    uint32_t ctrl;
+    uint32_t ctrl_bits;
+    uint64_t loc_ctrl;
+    uint64_t loc_sts;
+
+    /* Read CRB locality state */
+    loc_ctrl = val_tpm_crb_loc_ctrl(locality);
+    loc_sts = val_tpm_crb_loc_sts(locality);
+    ctrl = val_tpm_crb_read32(loc_ctrl);
+    ctrl_bits = ctrl & TPM_LOC_CTRL_VALID_MASK;
+
+    val_tpm_crb_write32(loc_ctrl, 0);
+
+    /* Handle no-op locality request */
+    if (ctrl_bits == 0)
+    {
+        val_tpm_crb_write32(loc_sts,
+                            (g_tpm_active_locality == locality) ?
+                            TPM_LOC_STS_GRANTED : 0);
+        return CRB_OK;
+    }
+
+    /* Handle locality requestAccess */
+    if ((ctrl_bits & TPM_LOC_CTRL_REQUEST_ACCESS) != 0)
+    {
+        if ((g_tpm_active_locality > CRB_LOCALITY_MAX) ||
+            (g_tpm_active_locality == locality))
+        {
+            g_tpm_active_locality = locality;
+            val_tpm_crb_write32(loc_sts, TPM_LOC_STS_GRANTED);
+        }
+        else
+        {
+            val_tpm_crb_write32(loc_sts, 0);
+        }
+
+        return CRB_OK;
+    }
+
+    /* Handle locality relinquish */
+    if (g_tpm_active_locality == locality)
+    {
+        val_tpm_crb_write32(loc_sts, 0);
+        g_tpm_active_locality = CRB_LOCALITY_MAX + 1;
+    }
+    else
+    {
+        val_tpm_crb_write32(loc_sts, 0);
+    }
+
+    return CRB_OK;
 }
 
 /**
@@ -100,6 +163,23 @@ void val_tpm_crb_service_handle_request(ffa_args_t *payload)
             {
                 status = CRB_NOTSUP;
             }
+        }
+        else
+        {
+            status = CRB_INVARG;
+        }
+    }
+    /* Handle start locality request */
+    else if (service_func == CRB_START)
+    {
+        if ((payload->arg5 > 0xff) ||
+            (payload->arg6 > CRB_LOCALITY_MAX))
+        {
+            status = CRB_INVARG;
+        }
+        else if ((uint32_t)payload->arg5 == CRB_START_TYPE_LOCALITY_REQUEST)
+        {
+            status = val_tpm_crb_start_locality_request((uint32_t)payload->arg6);
         }
         else
         {

@@ -36,6 +36,19 @@ const test_db_t test_list[] = {
     CLIENT_TEST_FN_ONLY(
         TESTSUITE_TPM, get_feature_info_invalid,
         FFA_MSG_SEND_DIRECT_REQ_64),
+
+    CLIENT_TEST_FN_ONLY(
+        TESTSUITE_TPM, start_locality_flow,
+        FFA_MSG_SEND_DIRECT_REQ_64),
+    CLIENT_TEST_FN_ONLY(
+        TESTSUITE_TPM, start_locality_ctrl_data,
+        FFA_MSG_SEND_DIRECT_REQ_64),
+    CLIENT_TEST_FN_ONLY(
+        TESTSUITE_TPM, start_locality_relinquish_inactive,
+        FFA_MSG_SEND_DIRECT_REQ_64),
+    CLIENT_TEST_FN_ONLY(
+        TESTSUITE_TPM, start_locality_invalid_args,
+        FFA_MSG_SEND_DIRECT_REQ_64),
 #endif
 
     {0, "", NULL, NULL, NULL, NULL, NULL, 0},

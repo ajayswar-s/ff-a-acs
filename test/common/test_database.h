@@ -298,6 +298,10 @@ DECLARE_TEST_FN(sp_yield_spmc_mode);
 DECLARE_TEST_FN(get_interface_version);
 DECLARE_TEST_FN(get_feature_info);
 DECLARE_TEST_FN(get_feature_info_invalid);
+DECLARE_TEST_FN(start_locality_flow);
+DECLARE_TEST_FN(start_locality_ctrl_data);
+DECLARE_TEST_FN(start_locality_relinquish_inactive);
+DECLARE_TEST_FN(start_locality_invalid_args);
 DECLARE_TEST_FN(tpm_crb_unknown_function_id);
 #endif
 
