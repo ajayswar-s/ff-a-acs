@@ -44,6 +44,7 @@ typedef enum {
     TESTSUITE_MEMORY_MANAGE      = 4,
     TESTSUITE_NOTIFICATIONS      = 5,
     TESTSUITE_INTERRUPTS         = 6,
+    TESTSUITE_TPM                = 7,
 } test_suite_num_t;
 
 /* Structure to hold list of test suite */

@@ -29,6 +29,11 @@ if(${ENABLE_TPM_CRB} EQUAL 1)
         ${ROOT_DIR}/val/src/val_tpm_crb_common_abi.c)
 endif()
 
+if((${ENABLE_TPM_CRB} EQUAL 1) AND (${PROJECT_NAME} STREQUAL "tpm_sp"))
+    list(APPEND VAL_SRC
+        ${ROOT_DIR}/val/src/val_tpm_crb_service.c)
+endif()
+
 if(NOT DEFINED VM_TARGET_LINUX_APP)
     list(APPEND VAL_SRC
         ${ROOT_DIR}/val/src/val_memory.c

@@ -17,6 +17,7 @@
 #define memory_manage      4
 #define notifications      5
 #define interrupts         6
+#define tpm_crb            7
 
 #define DECLARE_TEST_FN(testname) \
     extern void testname##_testentry(uint32_t test_num);\
@@ -293,4 +294,9 @@ DECLARE_TEST_FN(other_secure_int7);
 DECLARE_TEST_FN(sp_el1_int_mask);
 DECLARE_TEST_FN(sp_yield_spmc_mode);
 #endif
+#if (SUITE == tpm_crb)
+DECLARE_TEST_FN(get_interface_version);
+DECLARE_TEST_FN(tpm_crb_unknown_function_id);
+#endif
+
 #endif /* _TEST_DATABASE_H_ */

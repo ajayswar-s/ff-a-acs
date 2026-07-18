@@ -6,6 +6,7 @@
  */
 
 #include "val_test_dispatch.h"
+#include "val_tpm_crb_ffa.h"
 
 #ifndef TARGET_LINUX
 extern uint64_t val_image_load_offset;
@@ -443,6 +444,14 @@ void val_wait_for_test_fn_req(void)
 
     while (1)
     {
+#if ((ENABLE_TPM_CRB == 1) && defined(TPM_SP_COMPILE))
+        if (val_tpm_crb_service_is_request(&payload))
+        {
+            val_tpm_crb_service_handle_request(&payload);
+            continue;
+        }
+#endif
+
         if (payload.fid != FFA_MSG_SEND_DIRECT_REQ_32)
         {
             LOG(ERROR, "Invalid fid received, fid=0x%x, error=0x%x\n", payload.fid, payload.arg2);
