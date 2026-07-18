@@ -1,5 +1,5 @@
 #-------------------------------------------------------------------------------
-# Copyright (c) 2021-2025, Arm Limited or its affiliates. All rights reserved.
+# Copyright (c) 2021-2026, Arm Limited or its affiliates. All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
@@ -23,6 +23,11 @@ set(VAL_SRC ${ROOT_DIR}/val/src/val_main.c
             ${ROOT_DIR}/val/src/val_wd.c
             ${ROOT_DIR}/val/src/val_malloc.c
             ${FFA_GEN_OUTPUT_DIR}/val_endpoints.c)
+
+if(${ENABLE_TPM_CRB} EQUAL 1)
+    list(APPEND VAL_SRC
+        ${ROOT_DIR}/val/src/val_tpm_crb_common_abi.c)
+endif()
 
 if(NOT DEFINED VM_TARGET_LINUX_APP)
     list(APPEND VAL_SRC
