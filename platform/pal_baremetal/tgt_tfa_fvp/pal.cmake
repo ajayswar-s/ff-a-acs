@@ -1,5 +1,5 @@
 #-------------------------------------------------------------------------------
-# Copyright (c) 2021-2025, Arm Limited or its affiliates. All rights reserved.
+# Copyright (c) 2021-2026, Arm Limited or its affiliates. All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
@@ -32,6 +32,11 @@ set(PAL_SRC
     ${ROOT_DIR}/platform/driver/src/pal_smmuv3_testengine.c
 )
 
+if((${ENABLE_TPM_CRB} EQUAL 1) AND ("${PROJECT_NAME}" STREQUAL "tpm_sp"))
+    include(${ROOT_DIR}/platform/pal_baremetal/${TARGET}/ftpm_pal.cmake)
+    list(APPEND PAL_SRC ${FTPM_PAL_SRC})
+endif()
+
 if(${XEN_SUPPORT} EQUAL "1")
     list(APPEND PAL_SRC
         ${ROOT_DIR}/platform/common/src/xen/hypercall.S
@@ -50,5 +55,9 @@ target_include_directories(${PAL_LIB} PRIVATE
     ${ROOT_DIR}/platform/pal_baremetal/${TARGET}/inc
     ${ROOT_DIR}/platform/driver/inc/
 )
+
+if((${ENABLE_TPM_CRB} EQUAL 1) AND ("${PROJECT_NAME}" STREQUAL "tpm_sp"))
+    configure_ftpm_pal_target(${PAL_LIB})
+endif()
 
 unset(PAL_SRC)
