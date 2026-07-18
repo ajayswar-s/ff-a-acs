@@ -174,7 +174,8 @@ LIB_EXPORT void _plat__NVDisable(void *plat_parameter, size_t param_size)
 
 LIB_EXPORT int _plat__GetNvReadyState(void)
 {
-    return (g_tpm_nv_ready != 0U) ? 1 : 0;
+    /* TCG TPM platform API uses 0 for NV_READY and non-zero for unavailable. */
+    return (g_tpm_nv_ready != 0U) ? 0 : 1;
 }
 
 static int pal_tpm_nv_range_valid(unsigned int offset, unsigned int size)
@@ -282,7 +283,8 @@ LIB_EXPORT int _plat__NvMemoryMove(unsigned int source_offset,
 
 LIB_EXPORT int _plat__NvCommit(void)
 {
-    return 1;
+    /* TCG TPM NvCommit wrapper treats 0 as commit success. */
+    return 0;
 }
 
 LIB_EXPORT void _plat__SetNvAvail(void)

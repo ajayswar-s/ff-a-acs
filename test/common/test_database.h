@@ -302,6 +302,10 @@ DECLARE_TEST_FN(start_locality_flow);
 DECLARE_TEST_FN(start_locality_ctrl_data);
 DECLARE_TEST_FN(start_locality_relinquish_inactive);
 DECLARE_TEST_FN(start_locality_invalid_args);
+DECLARE_TEST_FN(start_command);
+DECLARE_TEST_FN(start_command_invalid_locality);
+DECLARE_TEST_FN(start_command_no_execute);
+DECLARE_TEST_FN(start_command_invalid_buffer);
 DECLARE_TEST_FN(tpm_crb_unknown_function_id);
 #endif
 

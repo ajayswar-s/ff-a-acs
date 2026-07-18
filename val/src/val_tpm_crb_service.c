@@ -4,12 +4,17 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+#include "pal_tpm.h"
 #include "val_endpoint_info.h"
 #include "val_ffa_helpers.h"
 #include "val_misc.h"
 #include "val_tpm_crb_ffa.h"
 #include "val_tpm_crb.h"
 
+#include <stddef.h>
+
+static uint8_t g_tpm_cmd[VAL_TPM_CRB_DATA_BUFFER_SIZE];
+static uint8_t g_tpm_rsp[VAL_TPM_CRB_DATA_BUFFER_SIZE];
 static uint32_t g_tpm_active_locality = CRB_LOCALITY_MAX + 1;
 
 /**
@@ -29,6 +34,116 @@ static uint32_t val_tpm_notif_supported(void)
     }
 
     return ((ep_info[TPM_SP].ep_properties & FFA_PARTITION_NOTIFICATION) != 0) ? 1 : 0;
+}
+
+/**
+ * @brief - Copies bytes from a CRB MMIO buffer.
+ * @param dst - Destination buffer.
+ * @param src - Source CRB MMIO address.
+ * @param size - Number of bytes to copy.
+ * @return - void.
+ */
+static void val_tpm_copy_from_mmio(uint8_t *dst, uint64_t src, uint32_t size)
+{
+    uint32_t i;
+
+    for (i = 0; i < size; i++)
+    {
+        dst[i] = val_tpm_crb_read8(src + i);
+    }
+}
+
+/**
+ * @brief - Copies bytes into a CRB MMIO buffer.
+ * @param dst - Destination CRB MMIO address.
+ * @param src - Source buffer.
+ * @param size - Number of bytes to copy.
+ * @return - void.
+ */
+static void val_tpm_copy_to_mmio(uint64_t dst, const uint8_t *src, uint32_t size)
+{
+    uint32_t i;
+
+    for (i = 0; i < size; i++)
+    {
+        val_tpm_crb_write8(dst + i, src[i]);
+    }
+}
+
+/**
+ * @brief - Copies bytes between normal buffers.
+ * @param dst - Destination buffer.
+ * @param src - Source buffer.
+ * @param size - Number of bytes to copy.
+ * @return - void.
+ */
+static void val_tpm_copy(uint8_t *dst, const uint8_t *src, uint32_t size)
+{
+    uint32_t i;
+
+    for (i = 0; i < size; i++)
+    {
+        dst[i] = src[i];
+    }
+}
+
+/**
+ * @brief - Executes a TPM command buffer through the PAL backend.
+ * @param cmd - TPM command buffer.
+ * @param cmd_size - TPM command size.
+ * @param rsp_size_out - Pointer to store TPM response size.
+ * @param rc_out - Pointer to store TPM response code.
+ * @return - Returns TPM service status code.
+ */
+static uint32_t val_tpm_execute_command_buffer(const uint8_t *cmd,
+                                               uint32_t cmd_size,
+                                               uint32_t *rsp_size_out,
+                                               uint32_t *rc_out)
+{
+    uint8_t *rsp;
+    uint32_t rsp_size;
+    uint32_t status;
+
+    if ((cmd == NULL) || (cmd_size > VAL_TPM_CRB_DATA_BUFFER_SIZE))
+    {
+        return CRB_INV_CRB_CTRL_DATA;
+    }
+
+    if (cmd != g_tpm_cmd)
+    {
+        val_memset(g_tpm_cmd, 0, sizeof(g_tpm_cmd));
+        val_tpm_copy(g_tpm_cmd, cmd, cmd_size);
+    }
+
+    rsp = g_tpm_rsp;
+    rsp_size = VAL_TPM_CRB_DATA_BUFFER_SIZE;
+    val_memset(g_tpm_rsp, 0, sizeof(g_tpm_rsp));
+
+    /* Execute TPM command through PAL */
+    status = pal_tpm_execute_command(cmd_size, g_tpm_cmd, &rsp_size, &rsp);
+    if ((status != PAL_TPM_SUCCESS) || (rsp == NULL) || (rsp_size > VAL_TPM_CRB_DATA_BUFFER_SIZE))
+    {
+        return CRB_INV_CRB_CTRL_DATA;
+    }
+
+    if (rsp != g_tpm_rsp)
+    {
+        val_tpm_copy(g_tpm_rsp, rsp, rsp_size);
+        rsp = g_tpm_rsp;
+    }
+
+    if (rsp_size_out != NULL)
+    {
+        *rsp_size_out = rsp_size;
+    }
+
+    if (rc_out != NULL)
+    {
+        *rc_out = (rsp_size >= TPM_RSP_HEADER_SIZE) ?
+                  val_tpm_be32_read(&rsp[TPM_RSP_RC_OFFSET]) : CRB_INV_CRB_CTRL_DATA;
+    }
+
+    return CRB_OK;
 }
 
 /**
@@ -92,6 +207,56 @@ static uint32_t val_tpm_crb_start_locality_request(uint32_t locality)
 }
 
 /**
+ * @brief - Handles START(COMMAND) for a CRB locality.
+ * @param locality - TPM locality number.
+ * @param rsp_size_out - Pointer to store TPM response size.
+ * @param rc_out - Pointer to store TPM response code.
+ * @return - Returns TPM service status code.
+ */
+static uint32_t val_tpm_crb_start_command(uint32_t locality,
+                                          uint32_t *rsp_size_out,
+                                          uint32_t *rc_out)
+{
+    uint64_t ctrl_start;
+    uint64_t loc_sts;
+    uint64_t data_buffer;
+    uint32_t cmd_size;
+    uint32_t status;
+
+    ctrl_start = val_tpm_crb_ctrl_start(locality);
+    loc_sts = val_tpm_crb_loc_sts(locality);
+    data_buffer = val_tpm_crb_data_buffer(locality);
+
+    if ((g_tpm_active_locality != locality) ||
+        ((val_tpm_crb_read32(loc_sts) & TPM_LOC_STS_GRANTED) == 0))
+    {
+        return CRB_OK;
+    }
+
+    if ((val_tpm_crb_read32(ctrl_start) & TPM_CRB_CTRL_START) == 0)
+    {
+        return CRB_OK;
+    }
+
+    /* Read TPM command buffer */
+    val_tpm_copy_from_mmio(g_tpm_cmd, data_buffer, VAL_TPM_CRB_DATA_BUFFER_SIZE);
+    cmd_size = val_tpm_be32_read(&g_tpm_cmd[TPM_CMD_SIZE_OFFSET]);
+
+    /* Execute TPM command */
+    status = val_tpm_execute_command_buffer(g_tpm_cmd, cmd_size,
+                                            rsp_size_out, rc_out);
+    if (status == CRB_OK)
+    {
+        /* Write TPM response buffer */
+        val_tpm_copy_to_mmio(data_buffer, g_tpm_rsp,
+                             (rsp_size_out != NULL) ? *rsp_size_out : 0);
+        val_tpm_crb_write32(ctrl_start, 0);
+    }
+
+    return status;
+}
+
+/**
  * @brief - Checks whether a direct request targets the TPM service ABI.
  * @param payload - FF-A direct request arguments.
  * @return - Returns 1 for TPM service requests, otherwise 0.
@@ -129,6 +294,7 @@ void val_tpm_crb_service_handle_request(ffa_args_t *payload)
     uint32_t service_func;
     uint32_t status;
     uint32_t value;
+    uint32_t rc;
     uint32_t is_64bit_direct_request;
 
     if (payload == NULL)
@@ -143,6 +309,7 @@ void val_tpm_crb_service_handle_request(ffa_args_t *payload)
     is_64bit_direct_request = (payload->fid == FFA_MSG_SEND_DIRECT_REQ_64) ? 1 : 0;
     status = CRB_NOFUNC;
     value = 0;
+    rc = 0;
 
     /* Handle get_interface_version */
     if (service_func == CRB_GET_INTERFACE_VERSION)
@@ -181,6 +348,10 @@ void val_tpm_crb_service_handle_request(ffa_args_t *payload)
         {
             status = val_tpm_crb_start_locality_request((uint32_t)payload->arg6);
         }
+        else if ((uint32_t)payload->arg5 == CRB_START_TYPE_COMMAND)
+        {
+            status = val_tpm_crb_start_command((uint32_t)payload->arg6, &value, &rc);
+        }
         else
         {
             status = CRB_INVARG;
@@ -192,6 +363,7 @@ void val_tpm_crb_service_handle_request(ffa_args_t *payload)
     payload->arg1 = ((uint32_t)receiver << 16) | sender;
     payload->arg4 = status;
     payload->arg5 = value;
+    payload->arg6 = rc;
 
     if (is_64bit_direct_request != 0)
     {
