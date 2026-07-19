@@ -15,7 +15,19 @@
 
 static uint8_t g_tpm_cmd[VAL_TPM_CRB_DATA_BUFFER_SIZE];
 static uint8_t g_tpm_rsp[VAL_TPM_CRB_DATA_BUFFER_SIZE];
+static uint8_t g_tpm_notification_pending_cmd[VAL_TPM_CRB_DATA_BUFFER_SIZE];
 static uint32_t g_tpm_active_locality = CRB_LOCALITY_MAX + 1;
+static uint16_t g_tpm_notification_client;
+static uint16_t g_tpm_notification_service;
+static uint32_t g_tpm_notification_id;
+static uint32_t g_tpm_notification_registered;
+static uint32_t g_tpm_notification_outstanding;
+static uint32_t g_tpm_notification_pending_locality_valid;
+static uint32_t g_tpm_notification_pending_locality;
+static uint32_t g_tpm_notification_pending_locality_ctrl;
+static uint32_t g_tpm_notification_pending_command_valid;
+static uint32_t g_tpm_notification_pending_command_locality;
+static uint32_t g_tpm_notification_pending_command_size;
 
 /**
  * @brief - Checks whether TPM SP advertises notification support.
@@ -147,24 +159,43 @@ static uint32_t val_tpm_execute_command_buffer(const uint8_t *cmd,
 }
 
 /**
- * @brief - Handles START(LOCALITY_REQUEST) for a CRB locality.
+ * @brief - Checks whether START(COMMAND) can be deferred for notification.
  * @param locality - TPM locality number.
- * @return - Returns TPM service status code.
+ * @return - Returns 1 when eligible, otherwise 0.
  */
-static uint32_t val_tpm_crb_start_locality_request(uint32_t locality)
+static uint32_t val_tpm_crb_command_notify_eligible(uint32_t locality)
 {
-    uint32_t ctrl;
-    uint32_t ctrl_bits;
-    uint64_t loc_ctrl;
+    uint64_t ctrl_start;
     uint64_t loc_sts;
 
-    /* Read CRB locality state */
-    loc_ctrl = val_tpm_crb_loc_ctrl(locality);
+    /* Read CRB command state */
+    ctrl_start = val_tpm_crb_ctrl_start(locality);
     loc_sts = val_tpm_crb_loc_sts(locality);
-    ctrl = val_tpm_crb_read32(loc_ctrl);
-    ctrl_bits = ctrl & TPM_LOC_CTRL_VALID_MASK;
 
-    val_tpm_crb_write32(loc_ctrl, 0);
+    if ((g_tpm_active_locality != locality) ||
+        ((val_tpm_crb_read32(loc_sts) & TPM_LOC_STS_GRANTED) == 0) ||
+        ((val_tpm_crb_read32(ctrl_start) & TPM_CRB_CTRL_START) == 0))
+    {
+        return 0;
+    }
+
+    return 1;
+}
+
+/**
+ * @brief - Applies saved START(LOCALITY_REQUEST) control data.
+ * @param locality - TPM locality number.
+ * @param ctrl - Saved locality control value.
+ * @return - Returns TPM service status code.
+ */
+static uint32_t val_tpm_crb_apply_locality_request(uint32_t locality, uint32_t ctrl)
+{
+    uint32_t ctrl_bits;
+    uint64_t loc_sts;
+
+    /* Apply saved CRB locality control bits */
+    loc_sts = val_tpm_crb_loc_sts(locality);
+    ctrl_bits = ctrl & TPM_LOC_CTRL_VALID_MASK;
 
     /* Handle no-op locality request */
     if (ctrl_bits == 0)
@@ -207,6 +238,88 @@ static uint32_t val_tpm_crb_start_locality_request(uint32_t locality)
 }
 
 /**
+ * @brief - Handles START(LOCALITY_REQUEST) for a CRB locality.
+ * @param locality - TPM locality number.
+ * @return - Returns TPM service status code.
+ */
+static uint32_t val_tpm_crb_start_locality_request(uint32_t locality)
+{
+    uint32_t ctrl;
+    uint64_t loc_ctrl;
+
+    /* Save and clear CRB locality control */
+    loc_ctrl = val_tpm_crb_loc_ctrl(locality);
+    ctrl = val_tpm_crb_read32(loc_ctrl);
+    val_tpm_crb_write32(loc_ctrl, 0);
+
+    return val_tpm_crb_apply_locality_request(locality, ctrl);
+}
+
+/**
+ * @brief - Clears TPM notification registration state.
+ * @return - void.
+ */
+static void val_tpm_clear_notification_registration(void)
+{
+    /* Clear TPM notification state */
+    g_tpm_notification_client = 0;
+    g_tpm_notification_service = 0;
+    g_tpm_notification_id = 0;
+    g_tpm_notification_registered = 0;
+    g_tpm_notification_outstanding = 0;
+    g_tpm_notification_pending_locality_valid = 0;
+    g_tpm_notification_pending_locality = 0;
+    g_tpm_notification_pending_locality_ctrl = 0;
+    g_tpm_notification_pending_command_valid = 0;
+    g_tpm_notification_pending_command_locality = 0;
+    g_tpm_notification_pending_command_size = 0;
+    val_memset(g_tpm_notification_pending_cmd, 0, sizeof(g_tpm_notification_pending_cmd));
+}
+
+/**
+ * @brief - Signals the registered TPM client notification.
+ * @param client - Client endpoint ID.
+ * @param service - TPM service endpoint ID.
+ * @return - Returns 1 when signaled, otherwise 0.
+ */
+static uint32_t val_tpm_signal_notification(uint16_t client, uint16_t service)
+{
+    ffa_args_t notification;
+    uint64_t bitmap;
+
+    if ((val_tpm_notif_supported() == 0) ||
+        (g_tpm_notification_registered == 0) ||
+        (g_tpm_notification_outstanding != 0) ||
+        (g_tpm_notification_client != client) ||
+        (g_tpm_notification_service != service) ||
+        (g_tpm_notification_id >= 64))
+    {
+        return 0;
+    }
+
+    /* Prepare notification bitmap */
+    bitmap = 1ULL << g_tpm_notification_id;
+    val_memset(&notification, 0, sizeof(notification));
+    notification.arg1 = ((uint32_t)service << 16) | client;
+    notification.arg2 = CRB_NOTIFICATION_TYPE_GLOBAL;
+#if (PLATFORM_NS_HYPERVISOR_PRESENT == 0) && (TARGET_LINUX == 0)
+    notification.arg2 |= FFA_NOTIFICATIONS_FLAG_DELAY_SRI;
+#endif
+    notification.arg3 = (uint32_t)(bitmap & 0xffffffffULL);
+    notification.arg4 = (uint32_t)(bitmap >> 32);
+
+    /* Signal FF-A notification */
+    val_ffa_notification_set(&notification);
+    if (notification.fid != FFA_ERROR_32)
+    {
+        g_tpm_notification_outstanding = 1;
+        return 1;
+    }
+
+    return 0;
+}
+
+/**
  * @brief - Handles START(COMMAND) for a CRB locality.
  * @param locality - TPM locality number.
  * @param rsp_size_out - Pointer to store TPM response size.
@@ -244,6 +357,40 @@ static uint32_t val_tpm_crb_start_command(uint32_t locality,
 
     /* Execute TPM command */
     status = val_tpm_execute_command_buffer(g_tpm_cmd, cmd_size,
+                                            rsp_size_out, rc_out);
+    if (status == CRB_OK)
+    {
+        /* Write TPM response buffer */
+        val_tpm_copy_to_mmio(data_buffer, g_tpm_rsp,
+                             (rsp_size_out != NULL) ? *rsp_size_out : 0);
+        val_tpm_crb_write32(ctrl_start, 0);
+    }
+
+    return status;
+}
+
+/**
+ * @brief - Completes a deferred START(COMMAND) from the pending command buffer.
+ * @param locality - TPM locality number.
+ * @param cmd_size - Saved TPM command size.
+ * @param rsp_size_out - Pointer to store TPM response size.
+ * @param rc_out - Pointer to store TPM response code.
+ * @return - Returns TPM service status code.
+ */
+static uint32_t val_tpm_crb_complete_pending_command(uint32_t locality,
+                                                      uint32_t cmd_size,
+                                                      uint32_t *rsp_size_out,
+                                                      uint32_t *rc_out)
+{
+    uint64_t ctrl_start;
+    uint64_t data_buffer;
+    uint32_t status;
+
+    ctrl_start = val_tpm_crb_ctrl_start(locality);
+    data_buffer = val_tpm_crb_data_buffer(locality);
+
+    /* Execute the command saved when START(COMMAND) was accepted */
+    status = val_tpm_execute_command_buffer(g_tpm_notification_pending_cmd, cmd_size,
                                             rsp_size_out, rc_out);
     if (status == CRB_OK)
     {
@@ -336,7 +483,7 @@ void val_tpm_crb_service_handle_request(ffa_args_t *payload)
             status = CRB_INVARG;
         }
     }
-    /* Handle start locality request */
+    /* Handle start */
     else if (service_func == CRB_START)
     {
         if ((payload->arg5 > 0xff) ||
@@ -346,15 +493,161 @@ void val_tpm_crb_service_handle_request(ffa_args_t *payload)
         }
         else if ((uint32_t)payload->arg5 == CRB_START_TYPE_LOCALITY_REQUEST)
         {
-            status = val_tpm_crb_start_locality_request((uint32_t)payload->arg6);
+            if ((g_tpm_notification_registered != 0) &&
+                (g_tpm_notification_client == sender) &&
+                (g_tpm_notification_service == receiver) &&
+                (g_tpm_notification_outstanding == 0))
+            {
+                g_tpm_notification_pending_locality = (uint32_t)payload->arg6;
+                g_tpm_notification_pending_locality_ctrl =
+                    val_tpm_crb_read32(val_tpm_crb_loc_ctrl((uint32_t)payload->arg6));
+                val_tpm_crb_write32(val_tpm_crb_loc_ctrl((uint32_t)payload->arg6), 0);
+                g_tpm_notification_pending_locality_valid = 1;
+                if (val_tpm_signal_notification(sender, receiver) != 0)
+                {
+                    status = CRB_OK;
+                }
+                else
+                {
+                    g_tpm_notification_pending_locality_valid = 0;
+                    status = val_tpm_crb_apply_locality_request(
+                                (uint32_t)payload->arg6,
+                                g_tpm_notification_pending_locality_ctrl);
+                    g_tpm_notification_pending_locality_ctrl = 0;
+                }
+            }
+            else
+            {
+                status = val_tpm_crb_start_locality_request((uint32_t)payload->arg6);
+            }
         }
         else if ((uint32_t)payload->arg5 == CRB_START_TYPE_COMMAND)
         {
-            status = val_tpm_crb_start_command((uint32_t)payload->arg6, &value, &rc);
+            if ((g_tpm_notification_registered != 0) &&
+                (g_tpm_notification_client == sender) &&
+                (g_tpm_notification_service == receiver) &&
+                (g_tpm_notification_outstanding == 0) &&
+                (val_tpm_crb_command_notify_eligible((uint32_t)payload->arg6) != 0))
+            {
+                g_tpm_notification_pending_command_locality = (uint32_t)payload->arg6;
+                val_tpm_copy_from_mmio(g_tpm_notification_pending_cmd,
+                                       val_tpm_crb_data_buffer((uint32_t)payload->arg6),
+                                       VAL_TPM_CRB_DATA_BUFFER_SIZE);
+                g_tpm_notification_pending_command_size =
+                    val_tpm_be32_read(&g_tpm_notification_pending_cmd[TPM_CMD_SIZE_OFFSET]);
+                g_tpm_notification_pending_command_valid = 1;
+                if (val_tpm_signal_notification(sender, receiver) != 0)
+                {
+                    status = CRB_OK;
+                }
+                else
+                {
+                    g_tpm_notification_pending_command_valid = 0;
+                    g_tpm_notification_pending_command_size = 0;
+                    val_memset(g_tpm_notification_pending_cmd, 0,
+                               sizeof(g_tpm_notification_pending_cmd));
+                    status = val_tpm_crb_start_command((uint32_t)payload->arg6, &value, &rc);
+                }
+            }
+            else
+            {
+                status = val_tpm_crb_start_command((uint32_t)payload->arg6, &value, &rc);
+            }
         }
         else
         {
             status = CRB_INVARG;
+        }
+    }
+    /* Handle register_notification */
+    else if (service_func == CRB_REGISTER_NOTIFICATION)
+    {
+        if ((payload->arg5 > 0x1ffff) ||
+            (payload->arg6 > CRB_NOTIFICATION_ID_MASK) ||
+            (payload->arg6 >= 64) ||
+            (((uint32_t)payload->arg5 >> CRB_NOTIFICATION_TYPE_SHIFT) !=
+             CRB_NOTIFICATION_TYPE_GLOBAL) ||
+            (((uint32_t)payload->arg5 & 0xffff) != 0))
+        {
+            status = CRB_INVARG;
+        }
+        else if (val_tpm_notif_supported() == 0)
+        {
+            status = CRB_NOTSUP;
+        }
+        else if (g_tpm_notification_registered != 0)
+        {
+            status = CRB_ALREADY;
+        }
+        else
+        {
+            g_tpm_notification_client = sender;
+            g_tpm_notification_service = receiver;
+            g_tpm_notification_id = (uint32_t)payload->arg6;
+            g_tpm_notification_registered = 1;
+            g_tpm_notification_outstanding = 0;
+            status = CRB_OK;
+        }
+    }
+    /* Handle unregister_notification */
+    else if (service_func == CRB_UNREGISTER_NOTIFICATION)
+    {
+        if (val_tpm_notif_supported() == 0)
+        {
+            status = CRB_NOTSUP;
+        }
+        else if ((g_tpm_notification_registered == 0) ||
+                 (g_tpm_notification_client != sender))
+        {
+            status = CRB_DENIED;
+        }
+        else
+        {
+            val_tpm_clear_notification_registration();
+            status = CRB_OK;
+        }
+    }
+    /* Handle finish_notified */
+    else if (service_func == CRB_FINISH_NOTIFIED)
+    {
+        if (val_tpm_notif_supported() == 0)
+        {
+            status = CRB_NOTSUP;
+        }
+        else if ((g_tpm_notification_registered == 0) ||
+                 (g_tpm_notification_client != sender) ||
+                 (g_tpm_notification_outstanding == 0))
+        {
+            status = CRB_DENIED;
+        }
+        else
+        {
+            if (g_tpm_notification_pending_locality_valid != 0)
+            {
+                status = val_tpm_crb_apply_locality_request(
+                            g_tpm_notification_pending_locality,
+                            g_tpm_notification_pending_locality_ctrl);
+                g_tpm_notification_pending_locality_valid = 0;
+                g_tpm_notification_pending_locality = 0;
+                g_tpm_notification_pending_locality_ctrl = 0;
+            }
+            else if (g_tpm_notification_pending_command_valid != 0)
+            {
+                status = val_tpm_crb_complete_pending_command(
+                            g_tpm_notification_pending_command_locality,
+                            g_tpm_notification_pending_command_size,
+                            &value, &rc);
+                g_tpm_notification_pending_command_valid = 0;
+                g_tpm_notification_pending_command_locality = 0;
+                g_tpm_notification_pending_command_size = 0;
+                val_memset(g_tpm_notification_pending_cmd, 0,
+                           sizeof(g_tpm_notification_pending_cmd));
+            }
+            else
+            {
+                status = CRB_OK;
+            }
+            g_tpm_notification_outstanding = 0;
         }
     }
 
