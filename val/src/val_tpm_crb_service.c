@@ -291,8 +291,7 @@ static uint32_t val_tpm_signal_notification(uint16_t client, uint16_t service)
         (g_tpm_notification_registered == 0) ||
         (g_tpm_notification_outstanding != 0) ||
         (g_tpm_notification_client != client) ||
-        (g_tpm_notification_service != service) ||
-        (g_tpm_notification_id >= 64))
+        (g_tpm_notification_service != service))
     {
         return 0;
     }
@@ -564,7 +563,6 @@ void val_tpm_crb_service_handle_request(ffa_args_t *payload)
     {
         if ((payload->arg5 > 0x1ffff) ||
             (payload->arg6 > CRB_NOTIFICATION_ID_MASK) ||
-            (payload->arg6 >= 64) ||
             (((uint32_t)payload->arg5 >> CRB_NOTIFICATION_TYPE_SHIFT) !=
              CRB_NOTIFICATION_TYPE_GLOBAL) ||
             (((uint32_t)payload->arg5 & 0xffff) != 0))
@@ -598,6 +596,10 @@ void val_tpm_crb_service_handle_request(ffa_args_t *payload)
         }
         else if ((g_tpm_notification_registered == 0) ||
                  (g_tpm_notification_client != sender))
+        {
+            status = CRB_DENIED;
+        }
+        else if (g_tpm_notification_outstanding != 0)
         {
             status = CRB_DENIED;
         }

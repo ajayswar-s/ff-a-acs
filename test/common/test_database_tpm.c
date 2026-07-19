@@ -68,6 +68,22 @@ const test_db_t test_list[] = {
     CLIENT_TEST_FN_ONLY(
         TESTSUITE_TPM, start_command_invalid_buffer,
         FFA_MSG_SEND_DIRECT_REQ_64),
+
+    CLIENT_TEST_FN_ONLY(
+        TESTSUITE_TPM, register_notification_duplicate,
+        FFA_MSG_SEND_DIRECT_REQ_64),
+    CLIENT_TEST_FN_ONLY(
+        TESTSUITE_TPM, register_notification_invalid,
+        FFA_MSG_SEND_DIRECT_REQ_64),
+    CLIENT_TEST_FN_ONLY(
+        TESTSUITE_TPM, finish_notified_no_notification,
+        FFA_MSG_SEND_DIRECT_REQ_64),
+    CLIENT_TEST_FN_ONLY(
+        TESTSUITE_TPM, unregister_notification_denied,
+        FFA_MSG_SEND_DIRECT_REQ_64),
+    CLIENT_TEST_FN_ONLY(
+        TESTSUITE_TPM, notification_after_unregister,
+        FFA_MSG_SEND_DIRECT_REQ_64),
 #endif
 
     {0, "", NULL, NULL, NULL, NULL, NULL, 0},

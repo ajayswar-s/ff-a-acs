@@ -298,6 +298,7 @@ DECLARE_TEST_FN(sp_yield_spmc_mode);
 DECLARE_TEST_FN(get_interface_version);
 DECLARE_TEST_FN(get_feature_info);
 DECLARE_TEST_FN(get_feature_info_invalid);
+DECLARE_TEST_FN(tpm_crb_unknown_function_id);
 DECLARE_TEST_FN(start_locality_flow);
 DECLARE_TEST_FN(notification_start_locality);
 DECLARE_TEST_FN(start_locality_ctrl_data);
@@ -308,7 +309,11 @@ DECLARE_TEST_FN(notification_start_command);
 DECLARE_TEST_FN(start_command_invalid_locality);
 DECLARE_TEST_FN(start_command_no_execute);
 DECLARE_TEST_FN(start_command_invalid_buffer);
-DECLARE_TEST_FN(tpm_crb_unknown_function_id);
+DECLARE_TEST_FN(register_notification_duplicate);
+DECLARE_TEST_FN(register_notification_invalid);
+DECLARE_TEST_FN(finish_notified_no_notification);
+DECLARE_TEST_FN(unregister_notification_denied);
+DECLARE_TEST_FN(notification_after_unregister);
 #endif
 
 #endif /* _TEST_DATABASE_H_ */
