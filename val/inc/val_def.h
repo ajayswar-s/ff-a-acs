@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2025, Arm Limited or its affiliates. All rights reserved.
+ * Copyright (c) 2021-2026, Arm Limited or its affiliates. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  *
@@ -14,7 +14,7 @@
 #define ACS_MAJOR_VERSION   0
 #define ACS_MINOR_VERSION   9
 
-#define IMAGE_SIZE        0x200000
+#define IMAGE_SIZE        0x400000
 
 #define STACK_SIZE          0x1000
 #define SCTLR_I_BIT         (1 << 12)
@@ -32,6 +32,12 @@
 
 
 /* Logical ids for test endpoint */
+#if (ENABLE_TPM_CRB == 1)
+#define ENDPOINT_LIST         \
+    EPX(NO_SERVER_EP, 0)      \
+    EPX(TPM_SP, 1)            \
+    EPX(VM1, 2)
+#else
 #define ENDPOINT_LIST         \
     EPX(NO_SERVER_EP, 0)      \
     EPX(SP1, 1)               \
@@ -41,6 +47,7 @@
     EPX(VM1, 5)               \
     EPX(VM2, 6)               \
     EPX(VM3, 7)
+#endif
 
 #ifndef __ASSEMBLER__
 #define EPX(name, val)  name = val,
@@ -51,6 +58,18 @@ typedef enum {
 #endif
 
 #define NO_SERVER_EP  0
+
+#if (ENABLE_TPM_CRB == 1)
+#define TPM_SP        1
+#define VM1           2
+#define SP1           0xffU
+#define SP2           0xfeU
+#define SP3           0xfdU
+#define SP4           0xfcU
+#define VM2           0xfbU
+#define VM3           0xfaU
+#define LAST_SECURE_EP TPM_SP
+#else
 #define SP1           1
 #define SP2           2
 #define SP3           3
@@ -58,6 +77,8 @@ typedef enum {
 #define VM1           5
 #define VM2           6
 #define VM3           7
+#define LAST_SECURE_EP SP4
+#endif
 
 #define HYPERVISOR_ID 0
 
@@ -70,7 +91,11 @@ typedef enum {
 #if (PLATFORM_NS_HYPERVISOR_PRESENT == 1 && PLATFORM_SP_EL == -1)
 #define VAL_S_EP_COUNT  0x0
 #else
+#if (ENABLE_TPM_CRB == 1)
+#define VAL_S_EP_COUNT  0x1
+#else
 #define VAL_S_EP_COUNT  0x4
+#endif
 #endif
 #define VAL_TOTAL_EP_COUNT VAL_NS_EP_COUNT + VAL_S_EP_COUNT
 

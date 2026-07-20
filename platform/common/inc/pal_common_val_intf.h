@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Arm Limited or its affiliates. All rights reserved.
+ * Copyright (c) 2025-2026, Arm Limited or its affiliates. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  *
@@ -63,8 +63,9 @@ uint32_t pal_watchdog_disable(void);
 #if ((PLATFORM_SPMC_EL == 2) && (defined(SP1_COMPILE)))
 #define pal_uart_putc(x) pal_uart_putc_hypcall((char)x)
 #elif (defined(SP2_COMPILE) || defined(VM2_COMPILE) ||\
-     defined(SP3_COMPILE) || defined(SP4_COMPILE) || defined(VM3_COMPILE))
-/* Use hyp log system call for sp2, sp3, sp4, vm2 and vm3 */
+     defined(SP3_COMPILE) || defined(SP4_COMPILE) || defined(VM3_COMPILE) ||\
+     defined(TPM_SP_COMPILE))
+/* Use hyp log system call for sp2, sp3, sp4, vm2, vm3 and tpm_sp */
 #define pal_uart_putc(x) pal_uart_putc_hypcall((char)x)
 #else
 /* Use platform uart for vm1 & spmc_el3 sp1 */

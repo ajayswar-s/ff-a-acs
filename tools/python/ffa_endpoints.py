@@ -146,17 +146,22 @@ def generate_entry(entry):
 
 # Sort files numerically based on SP or VM index
 def classify_and_sort(files):
-    sp, vm = [], []
+    sp, secure_services, vm = [], [], []
     for f in files:
         name = os.path.basename(f).lower()
         m = re.match(r'sp(\d+)', name)
         if m:
             sp.append((int(m.group(1)), f))
             continue
+        if name.startswith("tpm"):
+            secure_services.append((0, f))
+            continue
         m = re.match(r'vm(\d+)', name)
         if m:
             vm.append((int(m.group(1)), f))
-    return [f for _, f in sorted(sp + vm)]
+    return [f for _, f in sorted(sp)] + \
+           [f for _, f in sorted(secure_services)] + \
+           [f for _, f in sorted(vm)]
 
 # Write the full C and H file containing endpoint_info array
 def write_c_output(entries, output_c):
@@ -209,20 +214,26 @@ extern val_endpoint_info_t endpoint_info_table[FFA_ENDPOINT_COUNT];
 
 # Main entry point
 def main(base_manifest_dir, el_mode_str, output_dir,vm1_v,
-         sp1_v,sp2_v,sp3_v,sp4_v):
+         sp1_v,sp2_v,sp3_v,sp4_v, enable_tpm_crb):
 
     el_mode = int(el_mode_str)
     if el_mode not in (0, 1):
         print("EL mode must be 0 (el0) or 1 (el1)")
         return
 
-    endpoint_versions = {
-        "VM1": vm1_v,
-        "SP1": sp1_v,
-        "SP2": sp2_v,
-        "SP3": sp3_v,
-        "SP4": sp4_v,
-    }
+    if enable_tpm_crb == "1":
+        endpoint_versions = {
+            "TPM": "12",
+            "VM1": vm1_v,
+        }
+    else:
+        endpoint_versions = {
+            "VM1": vm1_v,
+            "SP1": sp1_v,
+            "SP2": sp2_v,
+            "SP3": sp3_v,
+            "SP4": sp4_v,
+        }
 
     all_filtered = []
 
@@ -233,7 +244,8 @@ def main(base_manifest_dir, el_mode_str, output_dir,vm1_v,
         manifest_dir = os.path.join(base_manifest_dir, version_dir)
 
         # Find only this endpoint DTS
-        pattern = os.path.join(manifest_dir, f"{ep_name.lower()}*.dts")
+        manifest_name = "tpm" if ep_name == "TPM" else ep_name.lower()
+        pattern = os.path.join(manifest_dir, f"{manifest_name}*.dts")
         all_files = glob.glob(pattern)
 
         # Filter by EL
@@ -288,6 +300,7 @@ if __name__ == "__main__":
     parser.add_argument("manifest_dir")
     parser.add_argument("el", choices=["0", "1"])
     parser.add_argument("output_dir")
+    parser.add_argument("--enable-tpm-crb", choices=["0", "1"], default="0")
 
     # Optional positional arguments
     parser.add_argument("VM1_V", nargs="?", default="12")
@@ -311,4 +324,5 @@ if __name__ == "__main__":
         args.SP2_V,
         args.SP3_V,
         args.SP4_V,
+        args.enable_tpm_crb,
     )

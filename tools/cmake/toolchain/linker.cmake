@@ -1,5 +1,5 @@
 #-------------------------------------------------------------------------------
-# Copyright (c) 2021-2025, Arm Limited or its affiliates. All rights reserved.
+# Copyright (c) 2021-2026, Arm Limited or its affiliates. All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
@@ -37,20 +37,43 @@ function (create_executable EXE_NAME)
     # Preprocess the scatter file for image layout symbols
     add_custom_command(OUTPUT Process-linker-script--${EXE_NAME}
                     COMMAND ${CROSS_COMPILE}gcc -E -P -I${ROOT_DIR}/val/inc -I${COMMON_VAL_PATH}/inc -I${ROOT_DIR}/platform/pal_baremetal/${TARGET}/inc ${SCATTER_INPUT_FILE} -o ${SCATTER_OUTPUT_FILE} -DPLATFORM_NS_HYPERVISOR_PRESENT=${PLATFORM_NS_HYPERVISOR_PRESENT} -DCMAKE_BUILD={CMAKE_BUILD}
-                    DEPENDS ${VAL_LIB} ${PAL_LIB} ${COMMON_VAL_LIB} ${TEST_LIB})
+                    DEPENDS ${VAL_LIB} ${PAL_LIB} ${COMMON_VAL_LIB} ${TEST_LIB} ${EXTRA_LINK_DEPS})
     add_custom_target(Process-linker-script-${EXE_NAME} ALL DEPENDS Process-linker-script--${EXE_NAME})
 
     # Link the objects
-    add_custom_command(
-    OUTPUT ${EXE_NAME}.elf
-    COMMAND ${GNUARM_LINKER} ${CMAKE_LINKER_FLAGS} ${GNUARM_LINKER_FLAGS}
-            -T ${SCATTER_OUTPUT_FILE}
-            -o ${EXE_NAME}.elf
-            --start-group
-                ${PAL_LIB}.a ${VAL_LIB}.a ${TEST_LIB}.a ${COMMON_VAL_LIB}.a
-            --end-group
-            ${PAL_OBJ_LIST}
-    DEPENDS Process-linker-script-${EXE_NAME})
+    if(("${EXE_NAME}" STREQUAL "tpm_sp") AND TPM_FTPM_LIB_PATH)
+        set(GNUARM_GCC_LINKER_FLAGS
+            -nostdlib
+            -Wl,--fatal-warnings
+            -Wl,-pie
+            -Wl,--no-dynamic-linker
+            ${LINKER_DEBUG_OPTIONS}
+            -Wl,-O1
+            -Wl,--gc-sections
+            -Wl,--build-id=none)
+        add_custom_command(
+        OUTPUT ${EXE_NAME}.elf
+        COMMAND ${CROSS_COMPILE}gcc ${CMAKE_LINKER_FLAGS} ${GNUARM_GCC_LINKER_FLAGS}
+                -Wl,--allow-multiple-definition
+                -T ${SCATTER_OUTPUT_FILE}
+                -o ${EXE_NAME}.elf
+                -Wl,--start-group
+                    ${PAL_LIB}.a ${VAL_LIB}.a ${TEST_LIB}.a ${COMMON_VAL_LIB}.a ${EXTRA_LINK_LIBS}
+                -Wl,--end-group
+                ${PAL_OBJ_LIST}
+        DEPENDS Process-linker-script-${EXE_NAME})
+    else()
+        add_custom_command(
+        OUTPUT ${EXE_NAME}.elf
+        COMMAND ${GNUARM_LINKER} ${CMAKE_LINKER_FLAGS} ${GNUARM_LINKER_FLAGS} ${EXTRA_LINK_FLAGS}
+                -T ${SCATTER_OUTPUT_FILE}
+                -o ${EXE_NAME}.elf
+                --start-group
+                    ${PAL_LIB}.a ${VAL_LIB}.a ${TEST_LIB}.a ${COMMON_VAL_LIB}.a ${EXTRA_LINK_LIBS}
+                --end-group
+                ${PAL_OBJ_LIST}
+        DEPENDS Process-linker-script-${EXE_NAME})
+    endif()
     add_custom_target(${EXE_NAME}_elf ALL DEPENDS ${EXE_NAME}.elf)
 
     # Create the dump info

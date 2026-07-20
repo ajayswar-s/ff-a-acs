@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2025, Arm Limited or its affiliates. All rights reserved.
+ * Copyright (c) 2021-2026, Arm Limited or its affiliates. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  *
@@ -41,9 +41,14 @@ static memory_region_descriptor_t endpoint_device_regions[] = {
 #if defined(VM1_COMPILE)
     {PLATFORM_NS_UART_BASE, PLATFORM_NS_UART_BASE, PLATFORM_NS_UART_SIZE, ATTR_DEVICE_RW},
     {PLATFORM_NS_WD_BASE, PLATFORM_NS_WD_BASE, PLATFORM_NS_WD_SIZE, ATTR_DEVICE_RW},
+    {PLATFORM_TPM_CRB_BASE, PLATFORM_TPM_CRB_BASE, PLATFORM_TPM_CRB_SIZE, ATTR_DEVICE_RW},
     {GICD_BASE, GICD_BASE, GICD_SIZE, ATTR_DEVICE_RW},
     {GICR_BASE, GICR_BASE, GICR_SIZE, ATTR_DEVICE_RW},
     {GICC_BASE, GICC_BASE, GICC_SIZE, ATTR_DEVICE_RW},
+#endif
+
+#if defined(TPM_SP_COMPILE)
+    {PLATFORM_TPM_CRB_BASE, PLATFORM_TPM_CRB_BASE, PLATFORM_TPM_CRB_SIZE, ATTR_DEVICE_RW},
 #endif
     };
 

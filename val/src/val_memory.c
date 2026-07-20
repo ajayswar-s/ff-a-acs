@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2025, Arm Limited or its affiliates. All rights reserved.
+ * Copyright (c) 2021-2026, Arm Limited or its affiliates. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  *
@@ -85,11 +85,12 @@ extern uintptr_t __BSS_START__, __BSS_END__;
 static uint32_t fill_translation_table(tt_descriptor_t tt_desc,
                            memory_region_descriptor_t *mem_desc)
 {
-    uint64_t block_size = 0x1ull << tt_desc.size_log2;
+    uint64_t block_size;
     uint64_t input_address, output_address, table_index, *table_desc;
     tt_descriptor_t tt_desc_next_level;
     uint64_t *tt_base_next_level = NULL;
     uint64_t page_size = val_curr_endpoint_page_size();
+    uint64_t table_entries;
 
 #ifdef PGT_DEBUG
     LOG(DBG, "tt_desc.level: %d\n", tt_desc.level, 0);
@@ -100,13 +101,40 @@ static uint32_t fill_translation_table(tt_descriptor_t tt_desc,
     LOG(DBG, "tt_desc.nbits: %d\n", tt_desc.nbits, 0);
 #endif
 
+    if ((tt_desc.tt_base == NULL) || (tt_desc.size_log2 >= 64) ||
+        (tt_desc.nbits == 0) || (tt_desc.nbits >= 64) ||
+        (bits_per_level >= 64) || (tt_desc.nbits > bits_per_level))
+    {
+        LOG(ERROR, "Invalid translation table descriptor\n");
+        return VAL_ERROR;
+    }
+
+    block_size = 0x1ull << tt_desc.size_log2;
+    table_entries = 0x1ull << bits_per_level;
+
     for (input_address = tt_desc.input_base,
          output_address = tt_desc.output_base;
-         input_address < tt_desc.input_top;
-         input_address += block_size, output_address += block_size)
+         input_address < tt_desc.input_top;)
     {
+        uint64_t block_base = input_address & ~(block_size - 1);
+
+        if (block_base > (~0ULL - (block_size - 1)))
+        {
+            LOG(ERROR, "Invalid translation block range\n");
+            return VAL_ERROR;
+        }
+
+        uint64_t block_top = block_base + block_size - 1;
+        uint64_t chunk_top = min(tt_desc.input_top, block_top);
+        uint64_t chunk_size = chunk_top - input_address + 1;
+
         table_index = input_address >> tt_desc.size_log2 &
                       ((0x1ull << tt_desc.nbits) - 1);
+        if (table_index >= table_entries)
+        {
+            LOG(ERROR, "Invalid translation table index\n");
+            return VAL_ERROR;
+        }
         table_desc = &tt_desc.tt_base[table_index];
 
 #ifdef PGT_DEBUG
@@ -123,6 +151,8 @@ static uint32_t fill_translation_table(tt_descriptor_t tt_desc,
 #ifdef PGT_DEBUG
             LOG(DBG, "page_descriptor = 0x%lx\n", *table_desc, 0);
 #endif
+            input_address += chunk_size;
+            output_address += chunk_size;
             continue;
         }
 
@@ -141,6 +171,8 @@ static uint32_t fill_translation_table(tt_descriptor_t tt_desc,
 #ifdef PGT_DEBUG
             LOG(DBG, "block_descriptor = 0x%lx\n", *table_desc, 0);
 #endif
+            input_address += chunk_size;
+            output_address += chunk_size;
             continue;
         }
 
@@ -184,7 +216,7 @@ static uint32_t fill_translation_table(tt_descriptor_t tt_desc,
                      tt_base_next_level = tt_l2_base_6;
                      tt_l2_base_6_used = 1;
                }
-              if (!tt_l2_base_7_used)
+               else if (!tt_l2_base_7_used)
                {
                      tt_base_next_level = tt_l2_base_7;
                      tt_l2_base_7_used = 1;
@@ -366,8 +398,7 @@ static uint32_t fill_translation_table(tt_descriptor_t tt_desc,
 
         tt_desc_next_level.tt_base = tt_base_next_level;
         tt_desc_next_level.input_base = input_address;
-        tt_desc_next_level.input_top =
-                      min(tt_desc.input_top, (input_address + block_size - 1));
+        tt_desc_next_level.input_top = chunk_top;
         tt_desc_next_level.output_base = output_address;
         tt_desc_next_level.level = tt_desc.level + 1;
         tt_desc_next_level.size_log2 = tt_desc.size_log2 - bits_per_level;
@@ -378,6 +409,8 @@ static uint32_t fill_translation_table(tt_descriptor_t tt_desc,
             return VAL_ERROR;
         }
 
+        input_address += chunk_size;
+        output_address += chunk_size;
     }
     return VAL_SUCCESS;
 }
@@ -489,16 +522,42 @@ static uint32_t val_pgt_create(pgt_descriptor_t pgt_desc,
  * @param pgt_desc - Data like input and output address size, ttbr
  * @return status
 **/
+static uint64_t val_normalize_endpoint_section_addr(uint64_t addr)
+{
+    uint64_t image_base = EP_TEXT_START;
+
+    if ((addr != 0UL) && (addr < image_base))
+        return image_base + addr;
+
+    return addr;
+}
+
 static uint32_t val_map_endpoint_region(pgt_descriptor_t pgt_desc)
 {
     void *region_list = NULL;
     memory_region_descriptor_t mem_desc;
     size_t no_of_regions = 0, i = 0;
+    uint64_t text_start = val_normalize_endpoint_section_addr(EP_TEXT_START);
+    uint64_t text_end = val_normalize_endpoint_section_addr(EP_TEXT_END);
+    uint64_t rodata_start = val_normalize_endpoint_section_addr(EP_RODATA_START);
+    uint64_t rodata_end = val_normalize_endpoint_section_addr(EP_RODATA_END);
+    uint64_t data_start = val_normalize_endpoint_section_addr(EP_DATA_START);
+    uint64_t data_end = val_normalize_endpoint_section_addr(EP_DATA_END);
+    uint64_t bss_start = val_normalize_endpoint_section_addr(EP_BSS_START);
+    uint64_t bss_end = val_normalize_endpoint_section_addr(EP_BSS_END);
+
+    if ((text_end < text_start) || (rodata_end < rodata_start) ||
+        (data_end < data_start) || (bss_end < bss_start))
+    {
+        LOG(ERROR, "Invalid endpoint image section bounds\n");
+        return VAL_ERROR;
+    }
+
     memory_region_descriptor_t endpoint_image_regions[] = {
-    {EP_TEXT_START, EP_TEXT_START, (EP_TEXT_END - EP_TEXT_START), ATTR_CODE},
-    {EP_RODATA_START, EP_RODATA_START, (EP_RODATA_END - EP_RODATA_START), ATTR_RO_DATA},
-    {EP_DATA_START, EP_DATA_START, (EP_DATA_END - EP_DATA_START), ATTR_RW_DATA},
-    {EP_BSS_START, EP_BSS_START, (EP_BSS_END - EP_BSS_START), ATTR_RW_DATA},
+    {text_start, text_start, (text_end - text_start), ATTR_CODE},
+    {rodata_start, rodata_start, (rodata_end - rodata_start), ATTR_RO_DATA},
+    {data_start, data_start, (data_end - data_start), ATTR_RW_DATA},
+    {bss_start, bss_start, (bss_end - bss_start), ATTR_RW_DATA},
 #if defined(VM1_COMPILE) && defined(XEN_SUPPORT)
     {GUEST_MAGIC_BASE, GUEST_MAGIC_BASE, GUEST_MAGIC_SIZE, ATTR_RW_DATA},
 #endif
@@ -628,6 +687,8 @@ uint32_t val_setup_mmu(void)
     if (val_map_endpoint_region(pgt_desc))
         return VAL_ERROR;
 
+    LOG(DBG, "val_setup_mmu: page table mapping complete\n");
+
     /* Enable MMU */
     val_sctlr_write((1 << 0) | // M=1 Enable the stage 1 MMU
                     (1 << 2) | // C=1 Enable data and unified caches
@@ -635,6 +696,7 @@ uint32_t val_setup_mmu(void)
                     (1 << 23) | // PSTATE.PAN is left unchanged on taking an exception to EL1
                     val_sctlr_read(currentEL),
                     currentEL);
+    LOG(DBG, "val_setup_mmu: mmu enabled\n");
 #ifdef PGT_DEBUG
     LOG(DBG, "val_setup_mmu: successful\n");
 #endif

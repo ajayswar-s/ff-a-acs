@@ -7,6 +7,10 @@
 
 #include "val_test_dispatch.h"
 
+#if (ENABLE_TPM_CRB == 1)
+#include "val_tpm_crb_ffa.h"
+#endif
+
 #ifndef TARGET_LINUX
 extern uint64_t val_image_load_offset;
 #else
@@ -23,6 +27,15 @@ extern const uint32_t  total_tests;
 static uint32_t validate_test_config(uint32_t client_logical_id __UNUSED,
                                      uint32_t server_logical_id __UNUSED)
 {
+#if (ENABLE_TPM_CRB == 1)
+    if ((client_logical_id != VM1) ||
+        ((server_logical_id != TPM_SP) && (server_logical_id != NO_SERVER_EP)))
+    {
+        LOG(INFO, "TPM setup supports only VM1 and TPM_SP, skipping test endpoint pair\n");
+        return VAL_SKIP_CHECK;
+    }
+#endif
+
 #if (PLATFORM_NS_HYP_MULTI_VM == 0)
     if (client_logical_id == VM2 || client_logical_id == VM3
         || server_logical_id == VM2 || server_logical_id == VM3)
@@ -38,7 +51,11 @@ static uint32_t validate_test_config(uint32_t client_logical_id __UNUSED,
     if (client_logical_id == SP1 || server_logical_id == SP1
         || client_logical_id == SP2 || server_logical_id == SP2
         || client_logical_id == SP3 || server_logical_id == SP3
-        || client_logical_id == SP4 || server_logical_id == SP4)
+        || client_logical_id == SP4 || server_logical_id == SP4
+#if (ENABLE_TPM_CRB == 1)
+        || client_logical_id == TPM_SP || server_logical_id == TPM_SP
+#endif
+        )
     {
         LOG(INFO, "No support for FFA S-ENDPOINT, skipping the check for client %s server %s \n",
             val_get_endpoint_name(client_logical_id), val_get_endpoint_name(server_logical_id));
@@ -56,7 +73,7 @@ static uint32_t validate_test_config(uint32_t client_logical_id __UNUSED,
     }
 #endif
 
-#if (PLATFORM_SP_SEND_DIRECT_REQ == 0)
+#if ((PLATFORM_SP_SEND_DIRECT_REQ == 0) && (ENABLE_TPM_CRB == 0))
     if (client_logical_id <= SP4 && server_logical_id != NO_SERVER_EP)
     {
         LOG(INFO, "SP doesn't support DIRECT_REQ, skipping the check\n");
@@ -64,10 +81,19 @@ static uint32_t validate_test_config(uint32_t client_logical_id __UNUSED,
     }
 #endif
 
-#if (PLATFORM_VM_SEND_DIRECT_RESP == 0)
+#if ((PLATFORM_VM_SEND_DIRECT_RESP == 0) && (ENABLE_TPM_CRB == 0))
     if (server_logical_id > SP4 && server_logical_id != NO_SERVER_EP)
     {
         LOG(INFO, "NS-ENDPOINT doesn't support DIRECT_RESP,skipping the check\n");
+        return VAL_SKIP_CHECK;
+    }
+#endif
+
+#if (ENABLE_TPM_CRB == 1)
+    if ((server_logical_id == TPM_SP) && (client_logical_id != VM1))
+    {
+        LOG(INFO, "TPM tests run only from VM1, skipping client %s server %s\n",
+            val_get_endpoint_name(client_logical_id), val_get_endpoint_name(server_logical_id));
         return VAL_SKIP_CHECK;
     }
 #endif
@@ -165,8 +191,13 @@ void val_run_test_suite(void)
 static void val_print_acs_header(void)
 {
    LOG(ALWAYS, "===========================================================\n");
+#if (ENABLE_TPM_CRB == 1)
+   LOG(ALWAYS, "\t***** TPM CRB over FF-A v%d.%d ACS BETA *****\n",
+            CRB_SERVICE_VERSION_MAJOR, CRB_SERVICE_VERSION_MINOR);
+#else
    LOG(ALWAYS, "\t\t***** FF-A v%d.%d ACS EAC *****\n",
             FFA_VERSION_MAJOR, FFA_VERSION_MINOR);
+#endif
    LOG(ALWAYS, "===========================================================\n");
 }
 
@@ -443,6 +474,14 @@ void val_wait_for_test_fn_req(void)
 
     while (1)
     {
+#if ((ENABLE_TPM_CRB == 1) && defined(TPM_SP_COMPILE))
+        if (val_tpm_crb_service_is_request(&payload))
+        {
+            val_tpm_crb_service_handle_request(&payload);
+            continue;
+        }
+#endif
+
         if (payload.fid != FFA_MSG_SEND_DIRECT_REQ_32)
         {
             LOG(ERROR, "Invalid fid received, fid=0x%x, error=0x%x\n", payload.fid, payload.arg2);

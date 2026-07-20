@@ -428,6 +428,20 @@ uint32_t val_check_ep_compile_status(uint32_t client_logical_id, uint32_t server
     return VAL_SUCCESS;
 }
 
+#if (ENABLE_TPM_CRB == 1)
+static bool val_uuid_is_nil(const uint32_t uuid[4])
+{
+    return ((uuid[0] | uuid[1] | uuid[2] | uuid[3]) == 0);
+}
+
+static bool val_uuid_matches(const uint32_t uuid_a[4], const uint32_t uuid_b[4])
+{
+    return (uuid_a[0] == uuid_b[0] && uuid_a[1] == uuid_b[1] &&
+            uuid_a[2] == uuid_b[2] && uuid_a[3] == uuid_b[3]);
+}
+
+#endif
+
 
 /**
  * @brief  This function sends a request with a Nil UUID to retrieve
@@ -447,7 +461,7 @@ void val_ep_info_relayer_sync(void)
     uint64_t size = PAGE_SIZE_4K;
     uint32_t i = 0, j = 0;
     uint32_t desc_size, desc_count = 0;
-    uint32_t ep_count = 5;//val_get_endpoint_info_table_count();
+    uint32_t ep_count = VAL_S_EP_COUNT + 1;
     ffa_args_t payload;
 
     tx_buff = val_aligned_alloc(PAGE_SIZE_4K, size);
@@ -509,7 +523,7 @@ void val_ep_info_relayer_sync(void)
         desc_size != FFA_PARTITION_INFO_V1_1_SIZE &&
         desc_size != FFA_PARTITION_INFO_V1_3_SIZE) {
         LOG(ERROR, "Invalid descriptor size %u\n", desc_size);
-	goto rx_release;
+        goto rx_release;
     }
     /* Match each known endpoint against returned partition descriptors */
     for (i = 1; i < ep_count; i++)
@@ -518,6 +532,18 @@ void val_ep_info_relayer_sync(void)
 
         for (j = 0; j < desc_count; j++)
         {
+#if (ENABLE_TPM_CRB == 1)
+            if (!val_uuid_is_nil(ep_info[i].uuid) &&
+                val_uuid_matches(ep_info[i].uuid, ret_info[j].uuid))
+            {
+                ep_info[i].is_valid = VAL_PARTITION_PRESENT;
+                ep_info[i].id = ret_info[j].id;
+                ep_info[i].ec_count = ret_info[j].exec_context;
+                LOG(INFO, "Partition with EPID 0x%x Found\n", ep_info[i].id);
+                found = 1;
+                break;
+            }
+#else
             if (ep_info[i].id == ret_info[j].id)
             {
                 ep_info[i].is_valid = VAL_PARTITION_PRESENT;
@@ -525,6 +551,7 @@ void val_ep_info_relayer_sync(void)
                 found = 1;
                 break;
             }
+#endif
         }
         if (!found)
         {

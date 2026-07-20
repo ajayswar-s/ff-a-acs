@@ -1,11 +1,19 @@
 #-------------------------------------------------------------------------------
-# Copyright (c) 2021-2025, Arm Limited or its affiliates. All rights reserved.
+# Copyright (c) 2021-2026, Arm Limited or its affiliates. All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
 #-------------------------------------------------------------------------------
 
-# Compile all .c/.S files from test directory
+# Compile TPM CRB tests only for the TPM CRB suite. Normal SUITE=all keeps
+# using the regular ACS database and excludes TPM CRB test sources.
+if((${ENABLE_TPM_CRB} EQUAL 1) AND (${SUITE} STREQUAL "tpm_crb"))
+file(GLOB TEST_SRC
+    "${ROOT_DIR}/test/v1.2/tpm_crb/*/*.h"
+    "${ROOT_DIR}/test/v1.2/tpm_crb/*/*.c"
+)
+list(APPEND TEST_SRC ${ROOT_DIR}/test/common/test_database_tpm.c)
+else()
 if(${SUITE} STREQUAL "all")
 file(GLOB TEST_SRC
     "${ROOT_DIR}/test/*/*/*.h"
@@ -13,6 +21,7 @@ file(GLOB TEST_SRC
     "${ROOT_DIR}/test/*/*/*.c"
     "${ROOT_DIR}/test/*/*/*/*.S"
 )
+list(FILTER TEST_SRC EXCLUDE REGEX "${ROOT_DIR}/test/v1\.2/tpm_crb/.*")
 else()
 file(GLOB TEST_SRC
     "${ROOT_DIR}/test/v1.0/${SUITE}/*/*.h"
@@ -28,6 +37,7 @@ file(GLOB TEST_SRC
     "${ROOT_DIR}/test/v1.2/${SUITE}/*/*/*.c"
     "${ROOT_DIR}/test/v1.2/${SUITE}/*/*/*.S"
 )
+
 endif()
 
 if(${TARGET_LINUX} STREQUAL 1)
@@ -44,6 +54,7 @@ else()
     elseif(${PLATFORM_FFA_V_1_0} EQUAL 1)
         list(APPEND TEST_SRC ${ROOT_DIR}/test/common/test_database_v_1_0.c)
     endif()
+endif()
 endif()
 
 # Create TEST library

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2025, Arm Limited or its affiliates. All rights reserved.
+ * Copyright (c) 2021-2026, Arm Limited or its affiliates. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  *
@@ -78,6 +78,9 @@
 #endif
 
 #define PLATFORM_NS_UART_SIZE    0x10000
+
+#define PLATFORM_TPM_CRB_BASE    0x88f00000
+#define PLATFORM_TPM_CRB_SIZE    0x1000
 
 /* Secure UART assigned to SP1 - PL011_UART2_BASE */
 #define PLATFORM_S_UART_BASE    0x1c0b0000

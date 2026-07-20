@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2025, Arm Limited or its affiliates. All rights reserved.
+ * Copyright (c) 2021-2026, Arm Limited or its affiliates. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  *
@@ -20,6 +20,9 @@
 #include "pal_shemaphore.h"
 #include "pal_arch_helpers.h"
 #include "pal_common_val_intf.h"
+#if (ENABLE_TPM_CRB == 1)
+#include "pal_tpm.h"
+#endif
 #ifndef TARGET_LINUX
 #include <pal_sp805_watchdog.h>
 #endif

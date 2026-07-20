@@ -1,0 +1,6 @@
+{
+     "tpm_sp" : {
+          "image": "../../../build/output/tpm_sp.bin",
+          "pm": "v12/tpm.dts"
+      }
+}

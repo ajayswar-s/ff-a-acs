@@ -32,11 +32,14 @@ This suite is not a substitute for design verification. To review the test logs,
 
 For more information on Architecture Compliance Suite see [Validation Methodology](./docs/Arm_FF_A_ACS_Validation_Methodology.pdf) document.
 
-## This release
-- Release Version - v1.2
-- Code Quality: EAC - ACS is being developed, please use this opportunity to ameliorate.
-- The tests are written for Arm FF-A v1.2 specification version.
+## Release details
+- Release Version - v1.2 FF-A ACS EAC, v1.0 TPM CRB over FF-A ACS BETA
+- Code Quality: FF-A ACS EAC, TPM CRB over FF-A ACS BETA
+- The FF-A tests are written for Arm FF-A v1.2 specification version.
+- The TPM CRB tests are written for [TPM CRB over FF-A v1.0 specification version](https://developer.arm.com/documentation/den0138/0100/?lang=en).
 - For information about the test coverage scenarios that are implemented in the current release of ACS and the scenarios that are planned for the future releases, see [Docs](./docs/).
+- For TPM CRB over FF-A test coverage scenarios, see [TPM CRB scenario docs](./docs/tpm_crb_scenario.md).
+- Note: The current release has been tested on tgt_tfa_fvp reference platforms with GNUARM Compiler.
 
 ## GitHub branch
 - To pick up the release version of the code, checkout the release branch.
@@ -95,6 +98,8 @@ make
 -   -DPLATFORM_FFA_V_ALL=<0|1>: It runs all tests that are supported by the Arm FF-A v1.2 specification. The default value is 1.
 -   -DPLATFORM_FFA_V_MULTI=<0|1>: It runs tests with multiple FF-A version SP combination. The default value is 0.
 -   -DENABLE_BTI=<ON|OFF>: It enables BTIs. The default value is OFF.
+-   -DENABLE_TPM_CRB=<0|1>: It enables the TPM CRB over FF-A test suite and TPM service partition build. The default value is 0.
+-   -DENABLE_EDK2_STMM=<0|1>: It enables the EDK2 StandaloneMM TPM backend library build for TPM CRB over FF-A. This option is used when ENABLE_TPM_CRB is enabled. The default value is 1 for TPM CRB builds.
 
 *To compile tests for tgt_tfa_fvp platform*:<br />
 ```
@@ -103,6 +108,15 @@ mkdir build ; cd build
 cmake ../ -G"Unix Makefiles" -DCROSS_COMPILE=<path-to-aarch64-gcc>/bin/aarch64-none-elf- -DTARGET=tgt_tfa_fvp -DPLATFORM_NS_HYPERVISOR_PRESENT=0 -DSUITE=all -DPLATFORM_FFA_V_ALL=1 -DPLATFORM_SP_EL=<0|1> -DENABLE_BTI=<ON|OFF>
 make
 ```
+*To compile TPM CRB over FF-A tests for tgt_tfa_fvp platform*:<br />
+```
+cd ff-a-acs ;
+mkdir build ; cd build
+cmake ../ -G"Unix Makefiles" -DCROSS_COMPILE=<path-to-aarch64-gcc>/bin/aarch64-none-elf- -DTARGET=tgt_tfa_fvp -DPLATFORM_NS_HYPERVISOR_PRESENT=0 -DPLATFORM_SPMC_EL=2 -DPLATFORM_SP_EL=1 -DPLATFORM_FFA_V_ALL=1 -DSUITE=tpm_crb -DENABLE_TPM_CRB=1 -DENABLE_EDK2_STMM=1
+make
+```
+The TPM CRB build uses the EDK2 and EDK2 platforms sources under **platform/common/src/edk2** and **platform/common/src/edk2-platforms**. Explicit EDK2 path arguments are not required for the default repository layout.
+
 **NOTE**
 	 The current release has been tested on **tgt_tfa_fvp** reference platforms with build options set to -DPLATFORM_NS_HYPERVISOR_PRESENT=0, -DPLATFORM_SPMC_EL=2, -DPLATFORM_SP_EL=<1|0>. These platform represents system configuration where SPMD and SMPC are implemented at EL3 and SEL2 respectively, and three test-SPs(sp1, sp2 and sp3) runs at S-EL1 or S-EL0 and one test NS-EP (vm1) runs as an OS kernel in normal world. For more information on the unverified tests on reference platform, see [testcase_unverified](./docs/testcase_unverified.md) document.<br />
 
