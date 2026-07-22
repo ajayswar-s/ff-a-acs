@@ -17,16 +17,7 @@
 **/
 ffa_endpoint_id_t val_get_endpoint_id(uint32_t logical_id)
 {
-    uint32_t total = val_get_endpoint_info_table_count();
-
-    /* Validate the logical ID against the table bounds */
-    assert(logical_id < total);
-    if (logical_id >= total)
-    {
-        LOG(ERROR, "Invalid logical_id %u (total %u)\n", logical_id, total);
-        return NO_SERVER_EP;
-    }
-    return endpoint_info_table[logical_id].id;
+ 
 }
 
 /**
